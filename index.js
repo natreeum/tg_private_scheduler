@@ -356,7 +356,7 @@ bot.on("message", async (msg) => {
 
 // 매일 오전 08:00 그룹별 일정 발송
 cron.schedule(
-  "0 8 * * *",
+  "0 8,22 * * *",
   async () => {
     try {
       // 지난 일정 먼저 정리
