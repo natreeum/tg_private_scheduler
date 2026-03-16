@@ -18,6 +18,7 @@ const bot = new TelegramBot(BOT_TOKEN, {
       allowed_updates: ["message"],
     },
   },
+  request: { agentOptions: { keepAlive: true, family: 4 } },
 });
 
 const DATA_FILE = path.join(__dirname, "data.json");
