@@ -366,7 +366,13 @@ bot.on("message", async (msg) => {
       const channelEvents = dbRaw.events.filter((e) => e.chatId === chat.id);
       const eventToDelete = channelEvents[idxInput];
 
-      const eventIdx = dbRaw.events.indexOf(eventToDelete);
+      let eventIdx = -1;
+      for (let i = 0; i < dbRaw.events.length; i++) {
+        if (dbRaw.events[i].id === eventToDelete.id) {
+          eventIdx = i;
+          break;
+        }
+      }
 
       if (eventIdx < 0 || dbRaw.events.length <= eventIdx) {
         await bot.sendMessage(chat.id, "삭제할 일정을 찾을 수 없습니다.", {
