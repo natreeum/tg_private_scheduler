@@ -363,7 +363,7 @@ bot.on("message", async (msg) => {
 
       const dbRaw = readDb();
 
-      const channelEvents = dbRaw.events.filter((e) => e.chatId === chat.id);
+      const channelEvents = getUpcomingEventsForChat(chat.id);
       const eventToDelete = channelEvents[idxInput];
 
       let eventIdx = -1;
