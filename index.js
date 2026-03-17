@@ -28,7 +28,7 @@ function ensureDataFile() {
     fs.writeFileSync(
       DATA_FILE,
       JSON.stringify({ events: [] }, null, 2),
-      "utf8",
+      "utf8"
     );
   }
 }
@@ -66,6 +66,8 @@ function parseScheduleMessage(text) {
   const trimmed = text.trim();
   const lines = trimmed.split("\n");
   if (!lines.length) return null;
+
+  lines.shift(); // 명령어 줄 제거
 
   const firstLine = lines[0].trim();
 
@@ -115,7 +117,9 @@ function resolveTargetDate(month, day) {
 }
 
 function formatDateKey(date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate()
+  )}`;
 }
 
 function formatDisplayDate(date) {
@@ -169,7 +173,7 @@ function getDdayLabel(dateKey) {
   const todayStart = new Date(
     today.getFullYear(),
     today.getMonth(),
-    today.getDate(),
+    today.getDate()
   );
 
   const [year, month, day] = dateKey.split("-").map(Number);
@@ -191,7 +195,12 @@ function removePastEvents() {
   const db = readDb();
 
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    now.getHours() + 9 // 9시간 보정 (UTC -> KST)
+  );
   const todayKey = formatDateKey(today);
 
   const beforeCount = db.events.length;
@@ -211,7 +220,7 @@ function saveEvent(event) {
   // 같은 그룹, 같은 원본 메시지면 중복 저장 방지
   const exists = db.events.some(
     (e) =>
-      e.chatId === event.chatId && e.sourceMessageId === event.sourceMessageId,
+      e.chatId === event.chatId && e.sourceMessageId === event.sourceMessageId
   );
 
   if (exists) return false;
@@ -253,7 +262,7 @@ function buildSummaryMessage(events) {
     const dday = getDdayLabel(event.dateKey);
 
     let line =
-      `- ${escapeHtml(event.displayDate)} ` +
+      `[${events.indexOf(event) + 1}] ${escapeHtml(event.displayDate)} ` +
       `[${escapeHtml(dday)}] ` +
       `${escapeHtml(event.headline)}`;
 
@@ -292,10 +301,8 @@ bot.on("message", async (msg) => {
       return;
     }
 
-    if (text.startsWith("!등록\n")) {
-      // !등록 이후 본문만 파싱
-      const body = text.slice("!등록\n".length).trim();
-      const parsed = parseScheduleMessage(body);
+    if (text.startsWith("!등록")) {
+      const parsed = parseScheduleMessage(text);
 
       if (!parsed) {
         await bot.sendMessage(
@@ -303,7 +310,7 @@ bot.on("message", async (msg) => {
           "등록 형식이 올바르지 않습니다.\n예시:\n!등록\n3/20 방탄소년단 6년만에 정규앨범 복귀\n\n하이브 움직임 체크",
           {
             reply_to_message_id: msg.message_id,
-          },
+          }
         );
         return;
       }
@@ -325,7 +332,7 @@ bot.on("message", async (msg) => {
         displayDate: formatDisplayDate(targetDate),
         headline: parsed.headline,
         note: parsed.note,
-        originalText: body,
+        originalText: text,
         sourceMessageId: msg.message_id,
         sourceLink: buildTelegramMessageLink(msg),
         senderId: msg.from?.id || null,
@@ -346,8 +353,29 @@ bot.on("message", async (msg) => {
         ].join("\n"),
         {
           reply_to_message_id: msg.message_id,
-        },
+        }
       );
+    }
+
+    if (text.startsWith("!삭제 ")) {
+      // !삭제 이후 본문만 파싱
+      const eventIdx = Number(text.slice("!삭제 ".length).trim()) - 1;
+
+      const db = readDb();
+
+      if (eventIdx >= db.events.length || eventIdx < 0) {
+        await bot.sendMessage(chat.id, "삭제할 일정을 찾을 수 없습니다.", {
+          reply_to_message_id: msg.message_id,
+        });
+        return;
+      }
+
+      db.events.splice(eventIdx, 1);
+      writeDb(db);
+
+      await bot.sendMessage(chat.id, "일정을 삭제했습니다.", {
+        reply_to_message_id: msg.message_id,
+      });
     }
   } catch (error) {
     console.error("message handler error:", error);
@@ -378,7 +406,7 @@ cron.schedule(
       console.error("cron error:", error);
     }
   },
-  { timezone: TIMEZONE },
+  { timezone: TIMEZONE }
 );
 
 console.log("Bot is running...");
