@@ -359,11 +359,14 @@ bot.on("message", async (msg) => {
 
     if (text.startsWith("!삭제 ")) {
       // !삭제 이후 본문만 파싱
-      const eventIdx = Number(text.slice("!삭제 ".length).trim()) - 1;
+      const idxInput = Number(text.slice("!삭제 ".length).trim()) - 1;
 
       const dbRaw = readDb();
+      const eventIdx = dbRaw.events.indexOf(
+        dbRaw.events.filter((e) => e.chatId === chat.id)[idxInput]
+      );
 
-      const db = dbRaw.events.filter((e) => e.chatId === chat.id);
+      const db = { events: dbRaw.events.filter((e) => e.chatId === chat.id) };
 
       if (eventIdx >= db.events.length || eventIdx < 0) {
         await bot.sendMessage(chat.id, "삭제할 일정을 찾을 수 없습니다.", {
