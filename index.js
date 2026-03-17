@@ -358,25 +358,25 @@ bot.on("message", async (msg) => {
     }
 
     if (text.startsWith("!삭제 ")) {
-      // !삭제 이후 본문만 파싱
+      // 명령어 이후 본문만 파싱
       const idxInput = Number(text.slice("!삭제 ".length).trim()) - 1;
 
       const dbRaw = readDb();
-      const eventIdx = dbRaw.events.indexOf(
-        dbRaw.events.filter((e) => e.chatId === chat.id)[idxInput]
-      );
 
-      const db = { events: dbRaw.events.filter((e) => e.chatId === chat.id) };
+      const channelEvents = dbRaw.events.filter((e) => e.chatId === chat.id);
+      const eventToDelete = channelEvents[idxInput];
 
-      if (eventIdx >= db.events.length || eventIdx < 0) {
+      const eventIdx = dbRaw.events.indexOf(eventToDelete);
+
+      if (eventIdx < 0 || dbRaw.events.length <= eventIdx) {
         await bot.sendMessage(chat.id, "삭제할 일정을 찾을 수 없습니다.", {
           reply_to_message_id: msg.message_id,
         });
         return;
       }
 
-      db.events.splice(eventIdx, 1);
-      writeDb(db);
+      dbRaw.events.splice(eventIdx, 1);
+      writeDb(dbRaw);
 
       await bot.sendMessage(chat.id, "일정을 삭제했습니다.", {
         reply_to_message_id: msg.message_id,
