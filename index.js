@@ -28,7 +28,7 @@ function ensureDataFile() {
     fs.writeFileSync(
       DATA_FILE,
       JSON.stringify({ events: [] }, null, 2),
-      "utf8"
+      "utf8",
     );
   }
 }
@@ -118,7 +118,7 @@ function resolveTargetDate(month, day) {
 
 function formatDateKey(date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
-    date.getDate()
+    date.getDate(),
   )}`;
 }
 
@@ -173,7 +173,7 @@ function getDdayLabel(dateKey) {
   const todayStart = new Date(
     today.getFullYear(),
     today.getMonth(),
-    today.getDate()
+    today.getDate(),
   );
 
   const [year, month, day] = dateKey.split("-").map(Number);
@@ -195,11 +195,14 @@ function removePastEvents() {
   const db = readDb();
 
   const now = new Date();
+  const timezoneOffset = now.getTimezoneOffset();
+  const timezoneOffsetHour = Math.floor(timezoneOffset / 60);
+
   const today = new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate(),
-    now.getHours() + 9 // 9시간 보정 (UTC -> KST)
+    now.getHours() + timezoneOffsetHour + 9, // 9시간 보정 (UTC -> KST)
   );
   const todayKey = formatDateKey(today);
 
@@ -220,7 +223,7 @@ function saveEvent(event) {
   // 같은 그룹, 같은 원본 메시지면 중복 저장 방지
   const exists = db.events.some(
     (e) =>
-      e.chatId === event.chatId && e.sourceMessageId === event.sourceMessageId
+      e.chatId === event.chatId && e.sourceMessageId === event.sourceMessageId,
   );
 
   if (exists) return false;
@@ -310,7 +313,7 @@ bot.on("message", async (msg) => {
           "등록 형식이 올바르지 않습니다.\n예시:\n!등록\n3/20 방탄소년단 6년만에 정규앨범 복귀\n\n하이브 움직임 체크",
           {
             reply_to_message_id: msg.message_id,
-          }
+          },
         );
         return;
       }
@@ -353,7 +356,7 @@ bot.on("message", async (msg) => {
         ].join("\n"),
         {
           reply_to_message_id: msg.message_id,
-        }
+        },
       );
     }
 
@@ -417,7 +420,7 @@ cron.schedule(
       console.error("cron error:", error);
     }
   },
-  { timezone: TIMEZONE }
+  { timezone: TIMEZONE },
 );
 
 console.log("Bot is running...");
