@@ -28,7 +28,7 @@ function ensureDataFile() {
     fs.writeFileSync(
       DATA_FILE,
       JSON.stringify({ events: [] }, null, 2),
-      "utf8",
+      "utf8"
     );
   }
 }
@@ -52,6 +52,102 @@ function makeEventId() {
 
 function escapeHtml(str = "") {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const KST_OFFSET_HOURS = 9;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function getKstNow() {
+  const now = new Date();
+  return new Date(now.getTime() + KST_OFFSET_HOURS * 60 * 60 * 1000);
+}
+
+function getKstDateParts(date = new Date()) {
+  const kst = new Date(date.getTime() + KST_OFFSET_HOURS * 60 * 60 * 1000);
+
+  return {
+    year: kst.getUTCFullYear(),
+    month: kst.getUTCMonth() + 1,
+    day: kst.getUTCDate(),
+    hour: kst.getUTCHours(),
+    minute: kst.getUTCMinutes(),
+    second: kst.getUTCSeconds(),
+  };
+}
+
+function makeDateKey(year, month, day) {
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+function parseDateKey(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return { year, month, day };
+}
+
+function getKstTodayKey() {
+  const { year, month, day } = getKstDateParts();
+  return makeDateKey(year, month, day);
+}
+
+function diffDaysFromDateKeys(baseKey, targetKey) {
+  const base = parseDateKey(baseKey);
+  const target = parseDateKey(targetKey);
+
+  const baseUtc = Date.UTC(base.year, base.month - 1, base.day);
+  const targetUtc = Date.UTC(target.year, target.month - 1, target.day);
+
+  return Math.floor((targetUtc - baseUtc) / MS_PER_DAY);
+}
+
+function resolveTargetDate(month, day) {
+  const {
+    year: currentYear,
+    month: currentMonth,
+    day: currentDay,
+  } = getKstDateParts();
+
+  const todayKey = makeDateKey(currentYear, currentMonth, currentDay);
+  let targetKey = makeDateKey(currentYear, month, day);
+
+  const validThisYear = new Date(Date.UTC(currentYear, month - 1, day));
+  if (
+    validThisYear.getUTCFullYear() !== currentYear ||
+    validThisYear.getUTCMonth() + 1 !== month ||
+    validThisYear.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  if (targetKey < todayKey) {
+    const nextYear = currentYear + 1;
+    const validNextYear = new Date(Date.UTC(nextYear, month - 1, day));
+
+    if (
+      validNextYear.getUTCFullYear() !== nextYear ||
+      validNextYear.getUTCMonth() + 1 !== month ||
+      validNextYear.getUTCDate() !== day
+    ) {
+      return null;
+    }
+
+    targetKey = makeDateKey(nextYear, month, day);
+  }
+
+  return targetKey;
+}
+
+function formatDisplayDate(dateKey) {
+  const { month, day } = parseDateKey(dateKey);
+  return `${month}월 ${day}일`;
+}
+
+function getDdayLabel(dateKey) {
+  const todayKey = getKstTodayKey();
+  const diffDays = diffDaysFromDateKeys(todayKey, dateKey);
+
+  if (diffDays === 0) return "D-Day";
+  if (diffDays > 0) return `D-${diffDays}`;
+  return `D+${Math.abs(diffDays)}`;
 }
 
 /**
@@ -85,45 +181,10 @@ function parseScheduleMessage(text) {
   return { month, day, headline, note };
 }
 
-function resolveTargetDate(month, day) {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-
-  let target = new Date(currentYear, month - 1, day);
-
-  if (
-    target.getFullYear() !== currentYear ||
-    target.getMonth() !== month - 1 ||
-    target.getDate() !== day
-  ) {
-    return null;
-  }
-
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  if (target < today) {
-    target = new Date(currentYear + 1, month - 1, day);
-
-    if (
-      target.getFullYear() !== currentYear + 1 ||
-      target.getMonth() !== month - 1 ||
-      target.getDate() !== day
-    ) {
-      return null;
-    }
-  }
-
-  return target;
-}
-
 function formatDateKey(date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
-    date.getDate(),
+    date.getDate()
   )}`;
-}
-
-function formatDisplayDate(date) {
-  return `${date.getMonth() + 1}월 ${date.getDate()}일`;
 }
 
 function buildTelegramMessageLink(msg) {
@@ -163,52 +224,16 @@ function compareEventsByDateAsc(a, b) {
 }
 
 /**
- * D-day 계산
- * 오늘이면 D-Day
- * 미래면 D-3
- * 과거면 D+2
- */
-function getDdayLabel(dateKey) {
-  const today = new Date();
-  const todayStart = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  );
-
-  const [year, month, day] = dateKey.split("-").map(Number);
-  const target = new Date(year, month - 1, day);
-
-  const diffMs = target.getTime() - todayStart.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "D-Day";
-  if (diffDays > 0) return `D-${diffDays}`;
-  return `D+${Math.abs(diffDays)}`;
-}
-
-/**
  * 지난 일정 삭제
  * 오늘보다 이전 dateKey 삭제
  */
 function removePastEvents() {
   const db = readDb();
-
-  const now = new Date();
-  const timezoneOffset = now.getTimezoneOffset();
-  const timezoneOffsetHour = Math.floor(timezoneOffset / 60);
-
-  const today = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    now.getHours() + timezoneOffsetHour + 9, // 9시간 보정 (UTC -> KST)
-  );
-  const todayKey = formatDateKey(today);
+  const todayKey = getKstTodayKey();
 
   const beforeCount = db.events.length;
 
-  db.events = db.events.filter((event) => event.dateKey >= todayKey);
+  db.events = db.events.filter((e) => e.dateKey >= todayKey);
   db.events.sort(compareEventsByDateAsc);
 
   writeDb(db);
@@ -223,7 +248,7 @@ function saveEvent(event) {
   // 같은 그룹, 같은 원본 메시지면 중복 저장 방지
   const exists = db.events.some(
     (e) =>
-      e.chatId === event.chatId && e.sourceMessageId === event.sourceMessageId,
+      e.chatId === event.chatId && e.sourceMessageId === event.sourceMessageId
   );
 
   if (exists) return false;
@@ -244,10 +269,7 @@ function getAllChatIds() {
 
 function getUpcomingEventsForChat(chatId) {
   const db = readDb();
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayKey = formatDateKey(today);
+  const todayKey = getKstTodayKey();
 
   return db.events
     .filter((e) => e.chatId === chatId && e.dateKey >= todayKey)
@@ -313,14 +335,14 @@ bot.on("message", async (msg) => {
           "등록 형식이 올바르지 않습니다.\n예시:\n!등록\n3/20 방탄소년단 6년만에 정규앨범 복귀\n\n하이브 움직임 체크",
           {
             reply_to_message_id: msg.message_id,
-          },
+          }
         );
         return;
       }
 
-      const targetDate = resolveTargetDate(parsed.month, parsed.day);
-      if (!targetDate) {
-        await bot.sendMessage(chat.id, "날짜 형식을 해석하지 못했습니다.", {
+      const targetDateKey = resolveTargetDate(parsed.month, parsed.day);
+      if (!targetDateKey) {
+        await bot.sendMessage(chat.id, "유효한 날짜가 아닙니다.", {
           reply_to_message_id: msg.message_id,
         });
         return;
@@ -331,8 +353,8 @@ bot.on("message", async (msg) => {
         chatId: chat.id,
         chatTitle: chat.title || "",
         chatType: chat.type,
-        dateKey: formatDateKey(targetDate),
-        displayDate: formatDisplayDate(targetDate),
+        dateKey: targetDateKey,
+        displayDate: formatDisplayDate(targetDateKey),
         headline: parsed.headline,
         note: parsed.note,
         originalText: text,
@@ -356,7 +378,7 @@ bot.on("message", async (msg) => {
         ].join("\n"),
         {
           reply_to_message_id: msg.message_id,
-        },
+        }
       );
     }
 
@@ -420,7 +442,7 @@ cron.schedule(
       console.error("cron error:", error);
     }
   },
-  { timezone: TIMEZONE },
+  { timezone: TIMEZONE }
 );
 
 console.log("Bot is running...");
